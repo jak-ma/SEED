@@ -4,7 +4,7 @@ import numpy as np
 import re
 from glob import glob
 from tqdm import tqdm
-
+from matplotlib import pyplot as plt
 
 # 带通滤波
 def bandpass(data, low=4.0, high=45.0, fs=200, order=4):
@@ -78,6 +78,17 @@ def load_data(data_path='input/*_*.mat', is_dl=False):
             subject_data.append(processed_X)    # [3, 15, 310]
         all_data.append(subject_data)
     all_data = np.array(all_data)   # [15, 3, 15, 310]
-    print(all_data.shape)
 
     return all_data
+
+# 可视化
+def visualize_subjects(subject_acc, model_name):
+
+    plt.figure(figsize=(12, 6))
+    plt.plot(range(1, len(subject_acc) + 1), subject_acc, marker='o')
+    plt.xlabel("Subject ID")
+    plt.ylabel("Accuracy")
+    plt.title(f"{model_name} | Accuracy per Subject")
+    plt.grid(True)
+    plt.savefig(f"subject_acc_line({model_name}).png")
+    plt.show()
