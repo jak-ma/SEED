@@ -14,49 +14,66 @@ def bandpass(data, low=4.0, high=45.0, fs=200, order=4):
 
 # 微分熵-手工特征
 def compute_DE_band(X):
-    # X -> [62, T]
-    # 定义相关的频段
     bands = {'delta':(1, 4), 'theta':(4, 8),
-    'alpha':(8, 14), 'beta':(14, 31), 'gamma':(31, 50)}
+             'alpha':(8, 14), 'beta':(14, 31), 'gamma':(31, 50)}
     features = []
-    for _, (low, high) in bands.items():
-        # 每个频段滤波
+    fs = 200
+    win_len = 1 * fs
+    overlap = 0.5  
+    
+    for band_name, (low, high) in bands.items():
         filtered = bandpass(X, low, high)
-        # 计算方差
-        var = np.var(filtered, axis=-1)  # [62,]
-        # 防止乘0错误
-        var = np.clip(var, 1e-6, None)
-        # 计算DE
-        de = 0.5*np.log(2*np.pi*np.e*var)   # [62,]
-        features.append(de)
-    # features -> [5, 62]
-    return np.concatenate(features) # [310,]
+        step = int(win_len * (1 - overlap))
+        n_windows = (filtered.shape[1] - win_len) // step + 1
+        
+        band_features = []
+        for i in range(n_windows):
+            start = i * step
+            end = start + win_len
+            seg = filtered[:, start:end]
+            
+            power = np.mean(seg**2, axis=-1)
+            power = np.clip(power, 1e-6, None)
+            de = 0.5 * np.log(2 * np.pi * np.e * power)
+            band_features.append(de)
+        
+        # 取时间维度上的平均值
+        mean_de = np.mean(band_features, axis=0)
+        features.append(mean_de)
+    
+    return np.concatenate(features)
 
 # 数据预处理
 def process_data(X_dict, is_dl=False):
     eeg_keys = [k for k in X_dict.keys() if re.search('_eeg\d+', k)]
     eeg_keys = sorted(eeg_keys, key=lambda x: int(re.search(r'eeg(\d+)', x).group(1)))
     X_trials = []
+    
     for k in eeg_keys:
-        X_raw = X_dict[k]   # [62, T]
+        X_raw = X_dict[k]
+        
+        # 先截取再滤波
+        start, end = 30*200, 120*200
+        if X_raw.shape[1] <= start:
+            raise ValueError('Signal is too short.')
+        end = min(end, X_raw.shape[1])
+        X_cut = X_raw[:, start:end]
+        
         # 重参考（CAR）
-        X = X_raw - np.mean(X_raw, axis=0, keepdims=True)    # [62, T]
-        # 主带通滤波
+        X_ref = X_cut - np.mean(X_cut, axis=0, keepdims=True)
+        
+        # 带通滤波
         low, high = 4.0, 45.0
         if is_dl:
-            low, high = 0.5, 50.0  
-        X = bandpass(X, low=low, high=high)
-        # 截取稳定段: 30s 到 120s
-        start, end = 30*200, 120*200
-        if X.shape[1] <= start:
-            raise ValueError('Signal is too short.')
-        end = min(end, X.shape[1])
-        X = X[:, start:end]
-        # DE
-        de = compute_DE_band(X)     # [310,]
-        X_trials.append(de)     # [15, 310]
-
+            low, high = 0.5, 50.0
+        X_filtered = bandpass(X_ref, low=low, high=high)
+        
+        # DE特征提取
+        de = compute_DE_band(X_filtered)
+        X_trials.append(de)
+    
     return np.array(X_trials)
+
 
 # 数据加载
 def load_data(data_path='input/*_*.mat', is_dl=False):
@@ -90,5 +107,5 @@ def visualize_subjects(subject_acc, model_name):
     plt.ylabel("Accuracy")
     plt.title(f"{model_name} | Accuracy per Subject")
     plt.grid(True)
-    plt.savefig(f"subject_acc_line({model_name}).png")
+    plt.savefig(f"templates/subject_acc_line({model_name}).png")
     plt.show()

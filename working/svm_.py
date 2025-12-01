@@ -2,15 +2,15 @@ from sklearn import svm
 from sklearn.metrics import accuracy_score
 import lightgbm as lgb
 from preprocess import load_data, visualize_subjects
-from sklearn.model_selection import LeaveOneOut
+from sklearn.model_selection import LeaveOneOut, GridSearchCV
 import scipy.io as sio
 import numpy as np
 import time
 from tqdm import tqdm
+from sklearn.preprocessing import StandardScaler
 
 def evaluate_svm(all_data, label):
-    y = np.array([list(label)*3 for _ in range(15)])
-    model = svm.SVC(C=10, kernel='linear', probability=True)
+    y = np.array([list(label+1)*3 for _ in range(15)])
     loo = LeaveOneOut()
     acc_results = []
     
@@ -22,10 +22,30 @@ def evaluate_svm(all_data, label):
         y_train = y_train.flatten()
         y_test = y_test.flatten()
 
-        model.fit(X_train, y_train)
-        acc = model.score(X_test, y_test)
-        acc_results.append(acc)
+        # 归一化
+        scaler = StandardScaler()
+        X_train = scaler.fit_transform(X_train)
+        X_test = scaler.transform(X_test)
 
+        # 网格搜索参数
+        param_grid = {
+            'C': [0.1, 1, 10, 100],
+            'kernel': ['linear',  'rbf', 'poly'],
+            'gamma': ['scale', 'auto'] + [0.01, 0.1, 1]
+        }
+        grid = GridSearchCV(
+            svm.SVC(probability=True),
+            param_grid=param_grid,
+            cv=3,
+            scoring='accuracy',
+            n_jobs=-1
+        )
+
+        grid.fit(X_train, y_train)
+        best_model = grid.best_estimator_
+        acc = best_model.score(X_test, y_test)
+        acc_results.append(acc)
+    
     return acc_results
 
 def evaluate_lightgbm(all_data, label):
@@ -73,7 +93,8 @@ def main():
     print('Load label...')
     label = sio.loadmat('input/label.mat')['label'].squeeze(0)
     print('Train model...')
-    model_name = 'lightgbm'
+    # model_name = 'lightgbm'
+    model_name = 'svm'
     acc_results = evaluate_model(all_data, label, model_name)
     print('\nVisualize Test Results...')
     visualize_subjects(acc_results, model_name)

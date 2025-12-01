@@ -1,4 +1,7 @@
 .vscode/
 input/
+
+working/debug.py
+
 __pycache__
 *__pycache__*
