@@ -4,13 +4,12 @@ from torch.utils.data import DataLoader, Dataset
 from torch.optim import AdamW
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import LeaveOneOut
-from sklearn.linear_model import LogisticRegression
 from preprocess import load_data, visualize_subjects
 from tqdm import tqdm
 import scipy.io as sio
 import numpy as np
 import time
-
+from feature_project import apply_pca, apply_anova
 
 class SeedDataset(Dataset):
     def __init__(self, X, y):
@@ -25,10 +24,15 @@ class SeedDataset(Dataset):
         return self.X[idx], self.y[idx]
 
 class SeedMLP(nn.Module):
-    def __init__(self):
+    def __init__(self, in_c = 160):
         super().__init__()
         self.mlp = nn.Sequential(
-            nn.Linear(310, 3),
+            nn.Linear(in_c, 128),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+            nn.Linear(128, 64),
+            nn.ReLU(),
+            nn.Linear(64, 3)
         )
 
     def forward(self, x):
@@ -40,7 +44,7 @@ def main():
     all_data = load_data(is_dl=True)
     label = np.array([list(sio.loadmat('input/label.mat')['label'].squeeze(0)+1)*3 for _ in range(15)])
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    epochs = 10
+    epochs = 30
     loo = LeaveOneOut()
     acc_results = []
     
@@ -50,13 +54,26 @@ def main():
         X_train, X_test = X_train.reshape(-1, 310), X_test.reshape(-1, 310)
         y_train, y_test = y_train.flatten(), y_test.flatten()
 
+        # 归一化
+        scaler = StandardScaler()
+        X_train = scaler.fit_transform(X_train)
+        X_test = scaler.transform(X_test)
+
+        # # PCA|K=60
+        # X_train, pca = apply_pca(X_train, n_components=60)
+        # X_test = pca.transform(X_test)
+
+        # ANOVA|K=160
+        X_train, anova = apply_anova(X_train, y_train, n_features=160)
+        X_test = anova.transform(X_test)
+
         train_dataset = SeedDataset(X_train, y_train)
         test_dataset = SeedDataset(X_test, y_test)
         train_dataloader = DataLoader(train_dataset, shuffle=True, batch_size=32)
         test_dataloader = DataLoader(test_dataset, shuffle=False, batch_size=64)
         model = SeedMLP().to(device)
         criterion = nn.CrossEntropyLoss()
-        optimizer = AdamW(params=model.parameters(), lr=1e-3, weight_decay=1e-4)
+        optimizer = AdamW(params=model.parameters(), lr=5e-4, weight_decay=1e-4)
         subject_acc = []
         for epoch in range(1, epochs+1):
             pbar1 = tqdm(train_dataloader, desc=f'MLP Training|[{epoch}/{epochs}]')
@@ -80,7 +97,8 @@ def main():
                     pbar2.set_postfix({"loss":loss.item()})
                     correct += (torch.argmax(pred, dim=1)==y.to(device)).sum().item()
             print(f"\n[Accuracy:{correct / len(test_dataset):.3f}]")
-            subject_acc.append(correct / len(test_dataset))
+            if epochs - epoch <= 5: 
+                subject_acc.append(correct / len(test_dataset))
         acc_results.append(np.mean(subject_acc))
     print('[Run Done]')
 
@@ -90,6 +108,6 @@ if __name__ == '__main__':
     start = time.time()
     acc_results = main()
     end = time.time()
-    visualize_subjects(acc_results, 'SeedMLP')
-
+    visualize_subjects(acc_results, 'MLP_ANOVA160', 'MLP')
+    print(f'MLP model evaluate mean score: {np.mean(acc_results):.3f}')
     print(f'Total time {end-start:.3f}')

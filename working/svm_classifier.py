@@ -1,14 +1,11 @@
 from sklearn import svm
-from sklearn.metrics import accuracy_score
-import lightgbm as lgb
 from preprocess import load_data, visualize_subjects
 from sklearn.model_selection import LeaveOneOut, GridSearchCV
 import scipy.io as sio
 import numpy as np
-import time
 from tqdm import tqdm
 from sklearn.preprocessing import StandardScaler
-from feature import apply_pca
+from feature_project import apply_pca, apply_anova
 
 def evaluate_svm(all_data, label):
     y = np.array([list(label+1)*3 for _ in range(15)])
@@ -16,10 +13,10 @@ def evaluate_svm(all_data, label):
     acc_results = []
     
     for train_idx, test_idx in tqdm(loo.split(all_data), desc='[SVM Training]'):
-        X_train, X_test = all_data[train_idx], all_data[test_idx]   # [14, 3, 15, 310], [1, 3, 15, 310]
-        y_train, y_test = y[train_idx], y[test_idx]     # [14, 45], [1, 45]
-        X_train = X_train.reshape(-1, 100)
-        X_test = X_test.reshape(-1, 100)
+        X_train, X_test = all_data[train_idx], all_data[test_idx]
+        y_train, y_test = y[train_idx], y[test_idx]     
+        X_train = X_train.reshape(-1, 310)
+        X_test = X_test.reshape(-1, 310)
         y_train = y_train.flatten()
         y_test = y_test.flatten()
 
@@ -27,6 +24,14 @@ def evaluate_svm(all_data, label):
         scaler = StandardScaler()
         X_train = scaler.fit_transform(X_train)
         X_test = scaler.transform(X_test)
+
+        # # PCA|K=60
+        # X_train, pca = apply_pca(X_train, n_components=60)
+        # X_test = pca.transform(X_test)
+
+        # ANOVA|K=80
+        X_train, anova = apply_anova(X_train, y_train, n_features=80)
+        X_test = anova.transform(X_test)
 
         # 网格搜索参数
         param_grid = {
@@ -37,7 +42,7 @@ def evaluate_svm(all_data, label):
         grid = GridSearchCV(
             svm.SVC(probability=True),
             param_grid=param_grid,
-            cv=3,
+            cv=5,
             scoring='accuracy',
             n_jobs=-1
         )
@@ -56,21 +61,17 @@ def main():
     print('Run Start!')
     print('Load data...')
     all_data = load_data()
-    print('Apply PCA...')
-    all_data = apply_pca(all_data, n_components=100)
     print('Load label...')
     label = sio.loadmat('input/label.mat')['label'].squeeze(0)
     print('Train model...')
-    model_name = 'svm'
+    model_name = 'SVM_ANOVA80'
     acc_results = evaluate_svm(all_data, label)
-    print('\nVisualize Test Results...')
-    visualize_subjects(acc_results, model_name)
     print_results(acc_results)
+    print('\nVisualize Test Results...')
+    visualize_subjects(acc_results, model_name, 'SVM')
     print('Run Done!')
 
 if __name__ == '__main__':
-    start = time.time()
     main()
-    end = time.time()
-    print(f'Total time {end-start:.3f} seconds')
+
     

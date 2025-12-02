@@ -9,6 +9,9 @@ path = 'input/2_20140404.mat'
 label_path = 'input/label.mat'
 
 if __name__ == '__main__':
-    # all_data = load_data().reshape(-1, 310)
-    # print(all_data[:,:15])
-    pass
+    all_data = load_data()
+    print(all_data.shape)
+    all_data = all_data.reshape(-1, 62, 5)
+    print(all_data.shape)
+
+    
