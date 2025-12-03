@@ -5,9 +5,10 @@ import scipy.io as sio
 import numpy as np
 from tqdm import tqdm
 from sklearn.preprocessing import StandardScaler
-from feature_project import apply_pca, apply_anova
+from dim_reduce import apply_pca, apply_anova
+from fusion import load_data_with_fusion
 
-def evaluate_svm(all_data, label):
+def evaluate_svm(all_data, label, n_features):
     y = np.array([list(label+1)*3 for _ in range(15)])
     loo = LeaveOneOut()
     acc_results = []
@@ -15,8 +16,8 @@ def evaluate_svm(all_data, label):
     for train_idx, test_idx in tqdm(loo.split(all_data), desc='[SVM Training]'):
         X_train, X_test = all_data[train_idx], all_data[test_idx]
         y_train, y_test = y[train_idx], y[test_idx]     
-        X_train = X_train.reshape(-1, 310)
-        X_test = X_test.reshape(-1, 310)
+        X_train = X_train.reshape(-1, n_features)
+        X_test = X_test.reshape(-1, n_features)
         y_train = y_train.flatten()
         y_test = y_test.flatten()
 
@@ -30,8 +31,8 @@ def evaluate_svm(all_data, label):
         # X_test = pca.transform(X_test)
 
         # ANOVA|K=80
-        X_train, anova = apply_anova(X_train, y_train, n_features=80)
-        X_test = anova.transform(X_test)
+        # X_train, anova = apply_anova(X_train, y_train, n_features=80)
+        # X_test = anova.transform(X_test)
 
         # 网格搜索参数
         param_grid = {
@@ -60,12 +61,14 @@ def print_results(acc_results):
 def main():
     print('Run Start!')
     print('Load data...')
-    all_data = load_data()
+    # all_data = load_data()
+    all_data = load_data_with_fusion()
+    n_features = all_data.shape[-1]
     print('Load label...')
     label = sio.loadmat('input/label.mat')['label'].squeeze(0)
     print('Train model...')
-    model_name = 'SVM_ANOVA80'
-    acc_results = evaluate_svm(all_data, label)
+    model_name = 'SVM_Fusion_3'
+    acc_results = evaluate_svm(all_data, label, n_features)
     print_results(acc_results)
     print('\nVisualize Test Results...')
     visualize_subjects(acc_results, model_name, 'SVM')

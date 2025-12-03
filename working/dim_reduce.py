@@ -67,7 +67,6 @@ class ANOVASelector:
     def get_f_scores(self):
         return self.f_scores_
 
-
 def apply_anova(X_train, y_train, n_features=60):
     anova = ANOVASelector(n_features=n_features)
     X_train_selected = anova.fit_transform(X_train, y_train)
